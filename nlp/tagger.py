@@ -88,13 +88,18 @@ class ChineseTagger(Tagger):
     POS_TAG = {
         'c': 'CONJ',
         'v': 'VERB',
+        'vn': 'VERB',
+        'vx': 'VERB',
         'n': 'NOUN',
         'a': 'ADJ',
         'd': 'ADV',
+        'ad': 'ADV',
         'nr': 'PROPN',
         'ns': 'PROPN',
+        'nt': 'PROPN',
         'r': 'PRON',
         'u': 'PART',
+        'i': 'IDIOM',
     }
 
     def __init__(self):

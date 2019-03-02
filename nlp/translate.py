@@ -38,6 +38,9 @@ def _shortest(l):
     return res
 
 
+POS_SET = {'NOUN', 'ADJ', 'VERB', 'PRON', 'ADV', 'PROPN', 'ADP'}
+
+
 class ChineseEnglishTranslator(Translator):
 
     def __init__(self):
@@ -63,6 +66,8 @@ class ChineseEnglishTranslator(Translator):
             CEDICT = cedict
 
     def word(self, word, tag):
+        if tag not in POS_SET:
+            raise Exception('Unsupported part of speech ({})'.format(tag))
         if word in CEDICT:
             return CEDICT[word]
         raise KeyError('Not in lexicon')
@@ -75,15 +80,13 @@ class ChineseEnglishTranslator(Translator):
 
 class GoogleTranslator(Translator):
 
-    POS_SET = {'NOUN', 'ADJ', 'VERB', 'PRON', 'ADV'}
-
     def __init__(self, src, dst):
         self.src = src.split('-')[0]
         self.dst = dst
         self.translator = translate.Client()
 
     def word(self, word, tag):
-        if tag in POS_SET:
+        if tag not in POS_SET:
             raise Exception('Unsupported part of speech ({})'.format(tag))
         return self.phrase(word)
 
