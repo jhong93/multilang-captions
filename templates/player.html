@@ -1,0 +1,223 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>{{ title }}</title>
+  <link rel="shortcut icon" type="image/png" href="{{ url_for('static', filename='favicon.png') }}"/>
+
+  <style>
+  .left-column {
+    float: left;
+    min-width: 60%;
+    height: 100vh;
+  }
+  .right-column {
+    float: left;
+    width: 40%;
+    height: 100vh;
+  }
+  .video-player {
+    height: 100vh;
+    width: 100%;
+  }
+  .video-player iframe {
+    width: 100%;
+    height: 100%;
+  }
+  .caption-player {
+    height: 46vh;
+    width: 100%;
+    background-color: #121212;
+    margin-top: 3vh;
+    margin-bottom: 3vh;
+    overflow: hidden;
+    display: table;
+  }
+  .caption-player select {
+    position: absolute;
+    float: left;
+  }
+  .caption-text-cell {
+    height: 100%;
+    display: table-cell;
+    vertical-align: middle;
+  }
+  .caption-text {
+    padding: 5%;
+    width: 90%;
+    color: grey;
+    text-align: center;
+    font-size: 48px;
+  }
+  span.nobr {
+    white-space: nowrap;
+  }
+  .main {
+    width: 100%;
+    height: 100vh;
+    background-color: black;
+    overflow: hidden;
+  }
+  </style>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/underscore.js/1.9.1/underscore-min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/backbone.js/1.4.0/backbone-min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.3.1/jquery.min.js"></script>
+</head>
+
+<body style="margin: 0;">
+  <div class="main">
+    <div class="left-column">
+      <div class="video-player" id='yt-player'></div>
+    </div>
+    <div class="right-column">
+      <div class="caption-player">
+        <select id="lang1">
+          <option value="">-</option>
+          {% for lang in cc_languages %}
+          <option value="{{ lang }}">{{ lang }}</option>
+          {% endfor %}
+        </select>
+        <div class="caption-text-cell">
+          <div id="text1" class="caption-text"></div>
+        </div>
+      </div>
+      <div class="caption-player">
+        <select id="lang2">
+          <option value="">-</option>
+          {% for lang in all_languages %}
+          <option value="{{ lang }}">
+            {{ lang }} {% if lang not in cc_languages %}(auto){% endif %}</option>
+          {% endfor %}
+        </select>
+        <div class="caption-text-cell">
+          <div id="text2" class="caption-text"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+  let loading_svg = '<img src="{{ url_for('static', filename='loading.svg') }}">';
+  let Inputs = Backbone.Model.extend({lang1: '', lang2: ''});
+  let Captions = Backbone.Model.extend({cc1: null, cc2: null, translations: null});
+
+  var tag = document.createElement('script');
+  tag.src = "https://www.youtube.com/iframe_api";
+  var firstScriptTag = document.getElementsByTagName('script')[0];
+  firstScriptTag.parentNode.insertBefore(tag, firstScriptTag);
+
+  let inputs = new Inputs();
+  let captions = new Captions();
+  var player;
+
+  let getCurrentTime = () => (player && player.getCurrentTime) ? player.getCurrentTime() : 0.;
+
+  function update() {
+    let currTime = getCurrentTime();
+    let translations = captions.get('translations');
+
+    function format_token(t) {
+      if (translations && _.has(translations, t.text)) {
+        let tt = translations[t.text].toLowerCase();
+        if (tt == 'i') tt = tt.toUpperCase();
+        return `<span class="nobr"><font color="white">${t.text}</font><font color="yellow"><b>${tt}</b></span></font>`;
+      } else {
+        return t.text;
+      }
+    }
+
+    let cc1 = captions.get('cc1');
+    var html1;
+    if (cc1) {
+      if (!inputs.get('lang2') || translations) {
+        html1 = '...';
+        for (let i in cc1) {
+          let line = cc1[i];
+          if (currTime >= line.start && currTime <= line.end) {
+            html1 = line.tokens.map(format_token).join(' &nbsp; ');
+            break;
+          }
+        }
+      } else {
+        html1 = loading_svg;
+      }
+    } else {
+      if (inputs.get('lang1')) {
+        html1 = loading_svg;
+      }
+    }
+    if (html1) {
+      $('#text1').html(html1);
+    } else {
+      $('#text1').empty();
+    }
+
+    let cc2 = captions.get('cc2');
+    var html2;
+    if (cc2) {
+      html2 = '...';
+      for (let i in cc2) {
+        let line = cc2[i];
+        if (currTime >= line.start && currTime <= line.end) {
+          html2 = line.tokens.map(t => t.text).join(' &nbsp; ');
+          break;
+        }
+      }
+    } else {
+      if (inputs.get('lang2')) {
+        html2 = loading_svg;
+      }
+    }
+    if (html2) {
+      $('#text2').html(html2);
+    } else {
+      $('#text2').empty();
+    }
+  }
+
+  function onYouTubeIframeAPIReady() {
+    console.log('YT API ready');
+    player = new YT.Player('yt-player', {
+      videoId: '{{ video }}',
+      events: {
+        'onReady': function() {
+          console.log('YT player ready');
+          update();
+        },
+        'onStateChange': function() {
+          console.log('YT player state changed', player.getPlayerState());
+          update();
+        }
+      }
+    });
+    setInterval(update, 100);
+  }
+
+  $('#lang1, #lang2').change(function() {
+    let $this = $(this);
+    inputs.set($this.attr('id'), $this.val());
+  });
+  inputs.on('change', function() {
+    let lang1 = inputs.get('lang1');
+    let lang2 = inputs.get('lang2');
+    captions.set({cc1: null, cc2: null, translations: null});
+    if (lang1) {
+      $.get('/captions/{{ video }}', {lang: lang1}, function(data) {
+        captions.set('cc1', data);
+      });
+    }
+    if (lang2) {
+      $.get('/captions/{{ video }}', {lang: lang2, orig: lang1}, function(data) {
+        captions.set('cc2', data);
+      });
+    }
+    if (lang1 && lang2 && lang1 != lang2) {
+      $.get('/translations/{{ video }}', {src: lang1, dst: lang2}, function(data) {
+        captions.set('translations', data);
+      });
+    }
+  });
+  captions.on('change', update);
+  </script>
+</body>
+</html>

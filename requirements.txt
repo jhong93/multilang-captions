@@ -1,0 +1,6 @@
+flask
+google-cloud-translate
+nagisa
+pkuseg
+spacy
+webvtt-py

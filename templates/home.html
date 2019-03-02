@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>YouTube Player</title>
+  <link rel="shortcut icon" type="image/png" href="{{ url_for('static', filename='favicon.png') }}"/>
+
+  <style>
+    .page-upper {
+      width: 100%;
+      text-align: center;
+      margin-top: 5vh;
+      margin-bottom: 5vh;
+    }
+    .page-upper input {
+      height: 50px;
+      text-align: center;
+      font-size: 36px;
+    }
+    .page-lower {
+      width: 100%;
+      align: center;
+    }
+    .video-thumbnail {
+      float: left;
+      width: 20%;
+      height: 240px;
+      text-align: center;
+      background-color: black;
+    }
+    .video-thumbnail img {
+      max-width: 100%;
+      max-height: 100%;
+      height: auto;
+    }
+  </style>
+</head>
+<body>
+  <div class="page-upper">
+    <form action="/player" method="get">.
+      <input name="url" type="text" style="width: 70%;" autocomplete="off"
+             placeholder="YouTube URL (e.g., https://youtu.be/gAnT21xGdSk)">
+      <input type="submit" value="Search">
+    </form>
+  </div>
+  <div class="page-lower">
+    {% for video in videos %}
+    <div class="video-thumbnail">
+      <a href="/player?url={{ video.id }}">
+        <img src="/thumbnail/{{ video.id }}" title="{{ video.title }}">
+      </a>
+    </div>
+    {% endfor %}
+  </div>
+</body>
