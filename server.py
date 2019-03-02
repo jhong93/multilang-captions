@@ -12,9 +12,9 @@ from subprocess import check_call
 
 import webvtt
 from flask import Flask, request, render_template, jsonify, send_from_directory
-from google.cloud import translate
 
 from nlp.tagger import Tagger
+from nlp.translate import Translator
 
 
 FORCE_DOWNLOAD = False
@@ -106,17 +106,13 @@ def read_vtt(path):
 
 
 def translate_sub_file(video_dir, src_lang, dst_lang):
-    translator = translate.Client()
+    translator = Translator.new(src_lang, dst_lang)
     dst_vtt = webvtt.WebVTT()
-    src_lang_base = src_lang.split('-')[0]
     for line in read_vtt(get_native_sub_path(video_dir, src_lang)):
         src_text = line.text.strip()
         if src_text:
             try:
-                dst_text = translator.translate(
-                    src_text, source_language=src_lang_base,
-                    target_language=dst_lang
-                )['translatedText']
+                dst_text = translator.phrase(src_text)
                 dst_vtt.captions.append(webvtt.Caption(
                     format_vtt_time(line.start), format_vtt_time(line.end),
                     dst_text))
@@ -126,25 +122,22 @@ def translate_sub_file(video_dir, src_lang, dst_lang):
 
 
 def translate_sub_words(video_dir, words, src_lang, dst_lang):
-    words = list(sorted(words))
+    tokens = list(sorted(set(w[0] for w in words)))
     cache_path = get_translation_cache_path(video_dir, src_lang, dst_lang,
-                                            md5_hash(''.join(words)))
+                                            md5_hash(''.join(tokens)))
     if os.path.exists(cache_path):
         print('Already cached: {} -> {}, {}'.format(
               src_lang, dst_lang, video_dir), file=sys.stderr)
         with open(cache_path, 'r') as f:
             trans_dict = json.load(f)
     else:
-        src_lang_base = src_lang.split('-')[0]
         print('Translating: {} -> {}, {}'.format(
-              src_lang_base, dst_lang, video_dir), file=sys.stderr)
-        translator = translate.Client()
+              src_lang, dst_lang, video_dir), file=sys.stderr)
+        translator = Translator.new(src_lang, dst_lang)
         trans_dict = {}
-        for w in words:
+        for w, tag in words:
             try:
-                trans_dict[w] = translator.translate(
-                    w, source_language=src_lang_base, target_language=dst_lang
-                )['translatedText']
+                trans_dict[w] = translator.word(w, tag)
             except Exception as e:
                 print('Error {}: {}'.format(e, w), file=sys.stderr)
         with open(cache_path, 'w') as f:
@@ -153,9 +146,6 @@ def translate_sub_words(video_dir, words, src_lang, dst_lang):
 
 
 Caption = namedtuple('CaptionLine', ['start', 'end', 'text', 'tokens'])
-
-
-AUGMENT_POS_SET = {'NOUN', 'ADJ', 'VERB', 'PRON', 'ADV'}
 
 
 def get_translation_dict(video_dir, src_lang, dst_lang):
@@ -169,8 +159,7 @@ def get_translation_dict(video_dir, src_lang, dst_lang):
         tokens = tagger.tag(line.text)
         tokenized_lines.append(line._replace(tokens=tokens))
         trans_set.update([
-            w.text.strip() for w in tokens
-            if w.text.strip() != '' and w.tag in AUGMENT_POS_SET])
+            (w.text.strip(), w.tag) for w in tokens if w.text.strip() != ''])
     return translate_sub_words(video_dir, trans_set, src_lang, dst_lang)
 
 
