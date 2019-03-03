@@ -179,6 +179,7 @@
     console.log('YT API ready');
     player = new YT.Player('yt-player', {
       videoId: '{{ video }}',
+      host: 'http://www.youtube.com',
       events: {
         'onReady': function() {
           console.log('YT player ready');
