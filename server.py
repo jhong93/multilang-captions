@@ -14,7 +14,7 @@ import webvtt
 from flask import Flask, request, render_template, jsonify, send_from_directory
 
 from nlp.tagger import Tagger
-from nlp.translate import Translator
+from nlp.translate import SentenceTranslator, WordTranslator
 
 
 FORCE_DOWNLOAD = False
@@ -26,8 +26,7 @@ def get_args():
     parser.add_argument('--host', dest='host', type=str, default='localhost')
     parser.add_argument('--cache-dir', dest='cache_dir', type=str,
                         default='cache')
-    parser.add_argument('--api-key', dest='api_key_file', type=str,
-                        required=True)
+    parser.add_argument('--api-key', dest='api_key_file', type=str)
     return parser.parse_args()
 
 
@@ -106,13 +105,13 @@ def read_vtt(path):
 
 
 def translate_sub_file(video_dir, src_lang, dst_lang):
-    translator = Translator.new(src_lang, dst_lang)
+    translator = SentenceTranslator.new(src_lang, dst_lang)
     dst_vtt = webvtt.WebVTT()
     for line in read_vtt(get_native_sub_path(video_dir, src_lang)):
         src_text = line.text.strip()
         if src_text:
             try:
-                dst_text = translator.phrase(src_text)
+                dst_text = translator.translate(src_text)
                 dst_vtt.captions.append(webvtt.Caption(
                     format_vtt_time(line.start), format_vtt_time(line.end),
                     dst_text))
@@ -123,33 +122,22 @@ def translate_sub_file(video_dir, src_lang, dst_lang):
 
 def translate_sub_words(video_dir, words, src_lang, dst_lang):
     tokens = list(sorted(set(w[0] for w in words)))
-    cache_path = get_translation_cache_path(video_dir, src_lang, dst_lang,
-                                            md5_hash(''.join(tokens)))
-    if os.path.exists(cache_path):
-        print('Already cached: {} -> {}, {}'.format(
-              src_lang, dst_lang, video_dir), file=sys.stderr)
-        with open(cache_path, 'r') as f:
-            trans_dict = json.load(f)
-    else:
-        print('Translating: {} -> {}, {}'.format(
-              src_lang, dst_lang, video_dir), file=sys.stderr)
-        translator = Translator.new(src_lang, dst_lang)
-        trans_dict = {}
-        for w, tag in words:
-            try:
-                trans_dict[w] = translator.word(w, tag)
-            except Exception as e:
-                print('Error {}: {}'.format(e, w), file=sys.stderr)
-        with open(cache_path, 'w') as f:
-            json.dump(trans_dict, f)
+    print('Translating: {} -> {}, {}'.format(
+          src_lang, dst_lang, video_dir), file=sys.stderr)
+    translator = WordTranslator(src_lang, dst_lang)
+    trans_dict = {}
+    for w, tag in words:
+        t = translator.translate(w)
+        if t is not None:
+            trans_dict[w] = list(t)
     return trans_dict
 
 
 Caption = namedtuple('CaptionLine', ['start', 'end', 'text', 'tokens'])
 
 
-def get_translation_dict(video_dir, src_lang, dst_lang):
-    lines = read_vtt(get_native_sub_path(video_dir, src_lang))
+def get_translation_dict(video_dir, src_path, src_lang, dst_lang):
+    lines = read_vtt(src_path)
 
     tagger = Tagger.new(src_lang)
     trans_set = set()
@@ -206,17 +194,6 @@ def build_flask_app(cache_dir):
                 videos.append({'id': video, 'title': info.get('title', '')})
         return render_template('home.html', videos=videos)
 
-    def get_other_languages(native):
-        if not native:
-            return []
-        languages = []
-        has_en = any(l.startswith('en') for l in native)
-        for l in Tagger.languages():
-            if l in native or not l.startswith('en') or (not has_en and l == 'en'):
-                languages.append(l)
-        languages.sort()
-        return languages
-
     @app.route('/player')
     def player():
         url = request.args.get('url')
@@ -229,11 +206,14 @@ def build_flask_app(cache_dir):
             download_video(download_url, video_dir, Tagger.languages())
         video_info = get_video_info(video_dir)
         cc_languages = list_caption_languages(video_dir)
-        all_languages = get_other_languages(cc_languages)
+        en_languages = [l for l in cc_languages if l.startswith('en')]
+        if len(en_languages) == 0:
+            en_languages.append('en')
         return render_template(
             'player.html', url=download_url, video=video,
             title=video_info.get('title', ''),
-            cc_languages=cc_languages, all_languages=all_languages)
+            cc_languages=cc_languages, en_languages=en_languages,
+            host='https://www.youtube.com')
 
     @app.route('/captions/<video>')
     def captions(video):
@@ -265,7 +245,13 @@ def build_flask_app(cache_dir):
         dst_lang = request.args.get('dst')
         if src_lang == dst_lang:
             return 'Source language cannot equal destination language', 400
-        response = jsonify(get_translation_dict(video_dir, src_lang, dst_lang))
+        src_path = get_native_sub_path(video_dir, src_lang)
+        if not os.path.exists(src_path):
+            src_path = get_translated_sub_path(video_dir, src_lang)
+            if not os.path.exists(src_path):
+                translate_sub_file(video_dir, dst_lang, src_lang)
+        response = jsonify(get_translation_dict(video_dir, src_path, src_lang,
+                                                dst_lang))
         response.cache_control.max_age = 3600
         return response
 
@@ -278,9 +264,12 @@ def build_flask_app(cache_dir):
 
 
 def main(host, port, cache_dir, api_key_file):
-    set_api_key(api_key_file)
+    if api_key_file is not None:
+        set_api_key(api_key_file)
+    if not os.path.isdir(cache_dir):
+        os.makedirs(cache_dir)
     app = build_flask_app(cache_dir)
-    app.run(host=host, port=port, debug=True)
+    app.run(host=host, port=port, debug=True, threaded=True)
 
 
 if __name__ == '__main__':

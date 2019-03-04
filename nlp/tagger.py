@@ -72,13 +72,18 @@ class JapaneseTagger(Tagger):
     }
 
     def __init__(self):
-        import nagisa
-        self._nagisa = nagisa
+        global nagisa, dy
+        try:
+            nagisa, dy
+        except NameError:
+            import nagisa
+            import dynet as dy
 
     def tag(self, text):
         if not text:
             return []
-        result = self._nagisa.tagging(text)
+        dy.renew_cg()
+        result = nagisa.tagging(text)
         return [Tagger.Token(w, JapaneseTagger.POS_TAG.get(t, None))
                 for w, t in zip(result.words, result.postags)]
 

@@ -46,7 +46,7 @@
     width: 90%;
     color: grey;
     text-align: center;
-    font-size: 48px;
+    font-size: 36px;
   }
   span.nobr {
     white-space: nowrap;
@@ -72,10 +72,14 @@
     <div class="right-column">
       <div class="caption-player">
         <select id="lang1">
-          <option value="">-</option>
-          {% for lang in cc_languages %}
-          <option value="{{ lang }}">{{ lang }}</option>
-          {% endfor %}
+          {% if cc_languages|length == 1 %}
+            <option value="{{ cc_languages.0 }}">{{ cc_languages.0 }}</option>
+          {% else %}
+            <option value="">-</option>
+            {% for lang in cc_languages %}
+            <option value="{{ lang }}">{{ lang }}</option>
+            {% endfor %}
+          {% endif %}
         </select>
         <div class="caption-text-cell">
           <div id="text1" class="caption-text"></div>
@@ -83,10 +87,10 @@
       </div>
       <div class="caption-player">
         <select id="lang2">
-          <option value="">-</option>
-          {% for lang in all_languages %}
+          {% for lang in en_languages %}
           <option value="{{ lang }}">
-            {{ lang }} {% if lang not in cc_languages %}(auto){% endif %}</option>
+            {{ lang }} {% if lang not in cc_languages %}(auto){% endif %}
+          </option>
           {% endfor %}
         </select>
         <div class="caption-text-cell">
@@ -99,7 +103,8 @@
   <script>
   let loading_svg = '<img src="{{ url_for('static', filename='loading.svg') }}">';
   let Inputs = Backbone.Model.extend({lang1: '', lang2: ''});
-  let Captions = Backbone.Model.extend({cc1: null, cc2: null, translations: null});
+  let Captions = Backbone.Model.extend({
+    cc1: null, cc2: null, tr12: null, tr21: null});
 
   var tag = document.createElement('script');
   tag.src = "https://www.youtube.com/iframe_api";
@@ -114,60 +119,66 @@
 
   function update() {
     let currTime = getCurrentTime();
-    let translations = captions.get('translations');
 
-    function format_token(t) {
-      if (translations && _.has(translations, t.text)) {
-        let tt = translations[t.text].toLowerCase();
-        if (tt == 'i') tt = tt.toUpperCase();
-        return `<span class="nobr"><font color="white">${t.text}</font><font color="yellow"><b>${tt}</b></span></font>`;
-      } else {
-        return t.text;
+    function format_token(tr_dict, t, other_lang_tokens) {
+      if (tr_dict && _.has(tr_dict, t.text)) {
+        var options = tr_dict[t.text].filter(x => other_lang_tokens.has(x));
+        if (options.length == 0) {
+          options = tr_dict[t.text];
+        }
+        options = options.filter(x => x.toLowerCase() != t.text.toLowerCase());
+        if (options.length > 0 && options.length <= 3) {
+          let tt = options.join(', ').toLowerCase();
+          if (tt == 'i') tt = tt.toUpperCase();
+          return `<span class="nobr"><font color="white">${t.text}</font><font color="yellow"><b>[${tt}]</b></span></font>`;
+        }
       }
+      return t.text;
     }
 
-    let cc1 = captions.get('cc1');
-    var html1;
-    if (cc1) {
-      if (!inputs.get('lang2') || translations) {
-        html1 = '...';
-        for (let i in cc1) {
-          let line = cc1[i];
-          if (currTime >= line.start && currTime <= line.end) {
-            html1 = line.tokens.map(format_token).join(' &nbsp; ');
-            break;
+    function render_text(cc, other_cc, trans_dict, this_lang, other_lang) {
+      var html;
+      if (cc) {
+        if (!other_lang || other_lang == this_lang || trans_dict) {
+          html = '...';
+          for (let i in cc) {
+            let line = cc[i];
+            if (currTime >= line.start && currTime <= line.end) {
+              other_cc_tokens = new Set();
+              if (other_cc) {
+                for (let j in other_cc) {
+                  let other_line = other_cc[j];
+                  if (Math.min(line.end, other_line.end) - Math.max(line.start, other_line.start) > 0) {
+                    other_line.tokens.forEach(t => other_cc_tokens.add(t.text.toLowerCase()));
+                  }
+                }
+              }
+              html = line.tokens.map(
+                t => format_token(trans_dict, t, other_cc_tokens)).join(' &nbsp; ');
+            }
           }
+        } else {
+          html = loading_svg;
         }
       } else {
-        html1 = loading_svg;
+        if (this_lang) {
+          html = loading_svg;
+        }
       }
-    } else {
-      if (inputs.get('lang1')) {
-        html1 = loading_svg;
-      }
+      return html
     }
+
+    let html1 = render_text(
+      captions.get('cc1'), captions.get('cc2'), captions.get('tr12'),
+      inputs.get('lang1'), inputs.get('lang2'));
     if (html1) {
       $('#text1').html(html1);
     } else {
       $('#text1').empty();
     }
-
-    let cc2 = captions.get('cc2');
-    var html2;
-    if (cc2) {
-      html2 = '...';
-      for (let i in cc2) {
-        let line = cc2[i];
-        if (currTime >= line.start && currTime <= line.end) {
-          html2 = line.tokens.map(t => t.text).join(' &nbsp; ');
-          break;
-        }
-      }
-    } else {
-      if (inputs.get('lang2')) {
-        html2 = loading_svg;
-      }
-    }
+    let html2 = render_text(
+      captions.get('cc2'), captions.get('cc1'), captions.get('tr21'),
+      inputs.get('lang2'), inputs.get('lang1'));
     if (html2) {
       $('#text2').html(html2);
     } else {
@@ -179,7 +190,7 @@
     console.log('YT API ready');
     player = new YT.Player('yt-player', {
       videoId: '{{ video }}',
-      host: 'http://www.youtube.com',
+      host: '{{ host }}',
       events: {
         'onReady': function() {
           console.log('YT player ready');
@@ -194,30 +205,37 @@
     setInterval(update, 100);
   }
 
+  function onInputsChanged() {
+    let lang1 = inputs.get('lang1');
+    let lang2 = inputs.get('lang2');
+    captions.set({cc1: null, cc2: null, tr12: null, tr21: null});
+    if (lang1) {
+      $.get('/captions/{{ video }}', {lang: lang1},
+        data => captions.set('cc1', data)
+      );
+    }
+    if (lang2) {
+      $.get('/captions/{{ video }}', {lang: lang2, orig: lang1},
+        data => captions.set('cc2', data)
+      );
+    }
+    if (lang1 && lang2 && lang1 != lang2) {
+      $.get('/translations/{{ video }}', {src: lang1, dst: lang2},
+        data => captions.set('tr12', data)
+      );
+      $.get('/translations/{{ video }}', {src: lang2, dst: lang1},
+        data => captions.set('tr21', data)
+      );
+    }
+  }
+
   $('#lang1, #lang2').change(function() {
     let $this = $(this);
     inputs.set($this.attr('id'), $this.val());
   });
-  inputs.on('change', function() {
-    let lang1 = inputs.get('lang1');
-    let lang2 = inputs.get('lang2');
-    captions.set({cc1: null, cc2: null, translations: null});
-    if (lang1) {
-      $.get('/captions/{{ video }}', {lang: lang1}, function(data) {
-        captions.set('cc1', data);
-      });
-    }
-    if (lang2) {
-      $.get('/captions/{{ video }}', {lang: lang2, orig: lang1}, function(data) {
-        captions.set('cc2', data);
-      });
-    }
-    if (lang1 && lang2 && lang1 != lang2) {
-      $.get('/translations/{{ video }}', {src: lang1, dst: lang2}, function(data) {
-        captions.set('translations', data);
-      });
-    }
-  });
+  inputs.on('change', onInputsChanged);
+  inputs.set({'lang1': $('#lang1').val(), 'lang2': $('#lang2').val()});
+
   captions.on('change', update);
   </script>
 </body>
