@@ -105,7 +105,7 @@ def read_vtt(path):
 
 
 def translate_sub_file(video_dir, src_lang, dst_lang):
-    translator = SentenceTranslator.new(src_lang, dst_lang)
+    translator = SentenceTranslator(src_lang, dst_lang)
     dst_vtt = webvtt.WebVTT()
     for line in read_vtt(get_native_sub_path(video_dir, src_lang)):
         src_text = line.text.strip()

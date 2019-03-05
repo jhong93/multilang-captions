@@ -1,3 +1,4 @@
+import time
 from abc import abstractmethod
 from collections import namedtuple
 from typing import List
@@ -43,6 +44,7 @@ class SpacyTagger(Tagger):
         try:
             nlp = spacy.load(lang, diable=['ner'])
         except:
+            print('{} is not installed, downloading model...')
             check_call(['python3', '-m', 'spacy', 'download', lang])
             nlp = spacy.load(lang, diable=['ner'])
         self._nlp = nlp
@@ -72,20 +74,23 @@ class JapaneseTagger(Tagger):
     }
 
     def __init__(self):
-        global nagisa, dy
+        global nagisa
         try:
-            nagisa, dy
+            nagisa
         except NameError:
             import nagisa
-            import dynet as dy
 
     def tag(self, text):
         if not text:
             return []
-        dy.renew_cg()
-        result = nagisa.tagging(text)
-        return [Tagger.Token(w, JapaneseTagger.POS_TAG.get(t, None))
-                for w, t in zip(result.words, result.postags)]
+        while True:
+            try:
+                result = nagisa.tagging(text)
+                return [Tagger.Token(w, JapaneseTagger.POS_TAG.get(t, None))
+                        for w, t in zip(result.words, result.postags)]
+            except Exception as e:
+                print('Error:', e)
+                time.sleep(0.5)
 
 
 class ChineseTagger(Tagger):

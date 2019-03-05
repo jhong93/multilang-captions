@@ -32,7 +32,10 @@
     overflow: hidden;
     display: table;
   }
-  .caption-player select {
+  .caption-player label {
+    color: white;
+  }
+  .caption-controls {
     position: absolute;
     float: left;
   }
@@ -71,28 +74,36 @@
     </div>
     <div class="right-column">
       <div class="caption-player">
-        <select id="lang1">
-          {% if cc_languages|length == 1 %}
-            <option value="{{ cc_languages.0 }}">{{ cc_languages.0 }}</option>
-          {% else %}
-            <option value="">-</option>
-            {% for lang in cc_languages %}
-            <option value="{{ lang }}">{{ lang }}</option>
-            {% endfor %}
-          {% endif %}
-        </select>
+        <div class="caption-controls">
+          <select id="lang1">
+            {% if cc_languages|length == 1 %}
+              <option value="{{ cc_languages.0 }}">{{ cc_languages.0 }}</option>
+            {% else %}
+              <option value="">-</option>
+              {% for lang in cc_languages %}
+              <option value="{{ lang }}">{{ lang }}</option>
+              {% endfor %}
+            {% endif %}
+          </select>
+          <label>Inline translations:</label>
+          <input type="checkbox" id="inlineTranslation1" checked value=1>
+        </div>
         <div class="caption-text-cell">
           <div id="text1" class="caption-text"></div>
         </div>
       </div>
       <div class="caption-player">
-        <select id="lang2">
-          {% for lang in en_languages %}
-          <option value="{{ lang }}">
-            {{ lang }} {% if lang not in cc_languages %}(auto){% endif %}
-          </option>
-          {% endfor %}
-        </select>
+        <div class="caption-controls">
+          <select id="lang2">
+            {% for lang in en_languages %}
+            <option value="{{ lang }}">
+              {{ lang }} {% if lang not in cc_languages %}(auto){% endif %}
+            </option>
+            {% endfor %}
+          </select>
+          <label>Inline translations:</label>
+          <input type="checkbox" id="inlineTranslation2" value=1>
+        </div>
         <div class="caption-text-cell">
           <div id="text2" class="caption-text"></div>
         </div>
@@ -120,8 +131,8 @@
   function update() {
     let currTime = getCurrentTime();
 
-    function format_token(tr_dict, t, other_lang_tokens) {
-      if (tr_dict && _.has(tr_dict, t.text)) {
+    function format_token(tr_dict, t, other_lang_tokens, show_inline_translations) {
+      if (show_inline_translations && tr_dict && _.has(tr_dict, t.text)) {
         var options = tr_dict[t.text].filter(x => other_lang_tokens.has(x));
         if (options.length == 0) {
           options = tr_dict[t.text];
@@ -132,11 +143,13 @@
           if (tt == 'i') tt = tt.toUpperCase();
           return `<span class="nobr"><font color="white">${t.text}</font><font color="yellow"><b>[${tt}]</b></span></font>`;
         }
+      } else {
+        return t.text;
       }
-      return t.text;
     }
 
-    function render_text(cc, other_cc, trans_dict, this_lang, other_lang) {
+    function render_text(cc, other_cc, trans_dict, this_lang, other_lang,
+                         show_inline_translations) {
       var html;
       if (cc) {
         if (!other_lang || other_lang == this_lang || trans_dict) {
@@ -154,7 +167,7 @@
                 }
               }
               html = line.tokens.map(
-                t => format_token(trans_dict, t, other_cc_tokens)).join(' &nbsp; ');
+                t => format_token(trans_dict, t, other_cc_tokens, show_inline_translations)).join(' &nbsp; ');
             }
           }
         } else {
@@ -170,7 +183,8 @@
 
     let html1 = render_text(
       captions.get('cc1'), captions.get('cc2'), captions.get('tr12'),
-      inputs.get('lang1'), inputs.get('lang2'));
+      inputs.get('lang1'), inputs.get('lang2'),
+      $('#inlineTranslation1').is(":checked"));
     if (html1) {
       $('#text1').html(html1);
     } else {
@@ -178,7 +192,8 @@
     }
     let html2 = render_text(
       captions.get('cc2'), captions.get('cc1'), captions.get('tr21'),
-      inputs.get('lang2'), inputs.get('lang1'));
+      inputs.get('lang2'), inputs.get('lang1'),
+      $('#inlineTranslation2').is(":checked"));
     if (html2) {
       $('#text2').html(html2);
     } else {
