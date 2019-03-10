@@ -141,11 +141,11 @@
         if (options.length > 0 && options.length <= 3) {
           let tt = options.join(', ').toLowerCase();
           if (tt == 'i') tt = tt.toUpperCase();
-          return `<span class="nobr"><font color="white">${t.text}</font><font color="yellow"><b>[${tt}]</b></span></font>`;
+          return `<span class="nobr"><font color="white">${t.text}</font>
+                  <font color="yellow"><b>[${tt}]</b></font></span>`;
         }
-      } else {
-        return t.text;
       }
+      return t.text;
     }
 
     function render_text(cc, other_cc, trans_dict, this_lang, other_lang,
@@ -153,7 +153,7 @@
       var html;
       if (cc) {
         if (!other_lang || other_lang == this_lang || trans_dict) {
-          html = '...';
+          html = '';
           for (let i in cc) {
             let line = cc[i];
             if (currTime >= line.start && currTime <= line.end) {
@@ -166,9 +166,13 @@
                   }
                 }
               }
-              html = line.tokens.map(
-                t => format_token(trans_dict, t, other_cc_tokens, show_inline_translations)).join(' &nbsp; ');
+              html += line.tokens.map(
+                t => format_token(trans_dict, t, other_cc_tokens, show_inline_translations)).join(' ');
+              html += ' ';
             }
+          }
+          if (html == '') {
+            html = '...';
           }
         } else {
           html = loading_svg;
@@ -186,7 +190,9 @@
       inputs.get('lang1'), inputs.get('lang2'),
       $('#inlineTranslation1').is(":checked"));
     if (html1) {
-      $('#text1').html(html1);
+      if (html1 != $('#text1').html) {
+        $('#text1').html(html1);
+      }
     } else {
       $('#text1').empty();
     }
@@ -195,7 +201,9 @@
       inputs.get('lang2'), inputs.get('lang1'),
       $('#inlineTranslation2').is(":checked"));
     if (html2) {
-      $('#text2').html(html2);
+      if (html2 != $('#text2').html) {
+        $('#text2').html(html2);
+      }
     } else {
       $('#text2').empty();
     }

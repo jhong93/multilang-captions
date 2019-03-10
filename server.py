@@ -232,8 +232,9 @@ def build_flask_app(cache_dir):
             captions = read_vtt(trans_sub_path)
         tagger = Tagger.new(lang)
         captions = [
-            line._replace(tokens=tagger.tag(line.text))
-            for line in captions]
+            line._replace(tokens=[
+                t for t in tagger.tag(line.text) if t.text.strip()
+            ]) for line in captions]
         response = jsonify(captions)
         response.cache_control.max_age = 3600
         return response
@@ -269,7 +270,7 @@ def main(host, port, cache_dir, api_key_file):
     if not os.path.isdir(cache_dir):
         os.makedirs(cache_dir)
     app = build_flask_app(cache_dir)
-    app.run(host=host, port=port, debug=True, threaded=True)
+    app.run(host=host, port=port, threaded=True)
 
 
 if __name__ == '__main__':

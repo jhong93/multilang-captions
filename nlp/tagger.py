@@ -44,7 +44,7 @@ class SpacyTagger(Tagger):
         try:
             nlp = spacy.load(lang, diable=['ner'])
         except:
-            print('{} is not installed, downloading model...')
+            print('{} is not installed, downloading model...'.format(lang))
             check_call(['python3', '-m', 'spacy', 'download', lang])
             nlp = spacy.load(lang, diable=['ner'])
         self._nlp = nlp
